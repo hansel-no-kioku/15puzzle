@@ -1,0 +1,24 @@
+{
+  "name": "15puzzle",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "output"
+  ],
+  "devDependencies": {
+    "purescript-prelude": "^4.0.1",
+    "purescript-console": "^4.1.0",
+    "purescript-effect": "^2.0.0",
+    "purescript-psci-support": "^4.0.0",
+    "purescript-phinajs": "^0.1.2",
+    "purescript-arrays": "^5.0.0",
+    "purescript-foldable-traversable": "^4.0.0",
+    "purescript-refs": "^4.1.0",
+    "purescript-maybe": "^4.0.0",
+    "purescript-random": "^4.0.0",
+    "purescript-tailrec": "^4.0.0",
+    "purescript-numbers": "^6.0.0"
+  },
+  "private": true
+}

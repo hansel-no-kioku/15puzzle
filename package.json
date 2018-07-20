@@ -1,0 +1,19 @@
+{
+  "name": "15puzzle",
+  "description": "15puzzle with purescript-phinajs",
+  "author": "hansel-no-kioku",
+  "license": "MIT",
+  "scripts": {
+    "bower": "bower",
+    "pulp": "pulp",
+    "build": "pulp browserify -O -t ./js/app.js",
+    "watch": "pulp -w browserify -O -t ./js/app.js",
+    "clean": "rimraf ./output ./js/app.js"
+  },
+  "devDependencies": {
+    "bower": "^1.8.4",
+    "pulp": "^12.3.0",
+    "purescript": "^0.12.0",
+    "rimraf": "^2.6.2"
+  }
+}
