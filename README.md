@@ -1,5 +1,5 @@
 # 15 puzzle
-15 puzzle game written in [PureScript](http://www.purescript.org/).
+This is the 15-puzzle using [phina.js](http://phinajs.com/), written in [PureScript](http://www.purescript.org/).
 
 ![Screen Shot](./img/screenshot.png "Screen Shot")
 
