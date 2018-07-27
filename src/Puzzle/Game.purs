@@ -1,65 +1,75 @@
 module Puzzle.Game
-  ( newPuzzleGame
-  , updateTime
-  , moveTileByNo
+  ( puzzleGame
   ) where
 
 import Prelude
 
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Effect.Ref (Ref, modify, new, read, write)
+import Effect.FSM (Machine, machine)
 import Phina (Duration)
+import Puzzle.Game.Message as GM
 import Puzzle.Game.Tiles (Tile(..), Tiles, getMovableTiles, getTilePos, initialTiles, isFinish, moveTile, shuffleTiles)
-import Puzzle.View (PuzzleView, finishView, moveTileView, setInteractiveView, setTilesView, startView, updateTimeView)
+import Puzzle.View.Message as VM
 
 
 shuffleTimes ∷ Int
 shuffleTimes = 100
 
-type PuzzleGame =
-  { tilesRef ∷ Ref Tiles
-  , timeRef ∷ Ref Duration
-  , isFinish ∷ Ref Boolean
-  , view ∷ PuzzleView
+type GameState =
+  { tiles ∷ Tiles
+  , time ∷ Duration
+  , isFinish ∷ Boolean
+  }
+
+type EffectEmit = Effect (Tuple VM.Message GameState)
+
+
+puzzleGame ∷ Effect (Machine GM.Message VM.Message)
+puzzleGame = do
+  machine gameFunc initialState GM.Init VM.Nothing
+
+
+initialState ∷ GameState
+initialState =
+  { tiles: mempty
+  , time: zero
+  , isFinish: false
   }
 
 
-newPuzzleGame ∷ PuzzleView → Effect PuzzleGame
-newPuzzleGame view = do
+gameFunc ∷ GM.Message → GameState → EffectEmit
+gameFunc GM.Init s = initTiles s
+gameFunc (GM.UpdateTime time) s = updateTime time s
+gameFunc (GM.MoveTile no) s = moveTileByNo no s
+
+
+initTiles ∷ GameState → EffectEmit
+initTiles state = ado
   tiles ← shuffleTiles shuffleTimes initialTiles
-  tilesRef ← new tiles
-  timeRef ← new zero
-  isFinish ← new false
-
-  setTilesView tiles view
-  setInteractiveView (getMovableTiles tiles) view
-
-  startView view
-
-  pure {tilesRef, timeRef, isFinish, view}
+  in Tuple
+    (VM.InitialSet tiles (getMovableTiles tiles))
+    (state {tiles = tiles})
 
 
-updateTime ∷ Duration → PuzzleGame → Effect Unit
-updateTime delta game = do
-  f ← read game.isFinish
-  unless f do
-    time ← modify (_ + delta) game.timeRef
-    updateTimeView time game.view
+updateTime ∷ Duration → GameState → EffectEmit
+updateTime delta state =
+  pure if state.isFinish
+          then Tuple VM.Nothing state
+          else
+            let time = state.time + delta
+            in Tuple (VM.UpdateTime time) (state {time = time})
 
 
-moveTileByNo ∷ Int → PuzzleGame → Effect Unit
-moveTileByNo no game = do
-  tiles ← read game.tilesRef
+moveTileByNo ∷ Int → GameState → EffectEmit
+moveTileByNo no state = ado
   let
-    from = getTilePos tiles $ Tile no
-    to = getTilePos tiles Null
-    tiles' = moveTile tiles {from, to}
-  write tiles' game.tilesRef
-  moveTileView (Tile no) to game.view
-  if isFinish tiles'
-    then do
-      _ ← write true game.isFinish
-      time ← read game.timeRef
-      finishView time game.view
-    else
-      setInteractiveView (getMovableTiles tiles') game.view
+    from = getTilePos state.tiles $ Tile no
+    to = getTilePos state.tiles Null
+    tiles' = moveTile state.tiles {from, to}
+    isFinish' = isFinish tiles'
+    output = if isFinish'
+      then VM.MoveTileFinish no to state.time
+      else VM.MoveTile no to $ getMovableTiles tiles'
+    state' = state {tiles = tiles', isFinish = isFinish'}
+  in Tuple output state'

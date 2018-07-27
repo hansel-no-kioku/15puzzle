@@ -1,30 +1,26 @@
 module Puzzle.View
-  ( PuzzleView
+  ( puzzleView
   , EventMove(..)
   , EventFinish(..)
-  , newPuzzleView
-  , setTilesView
-  , moveTileView
-  , setInteractiveView
-  , updateTimeView
-  , startView
-  , finishView
   ) where
 
 import Prelude
 
 import Data.Array (mapMaybe)
 import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
+import Effect.FSM (Machine, machine)
 import Phina (class Event, CountScene, CountSetting, DisplayScene, Duration, Label, SceneHandle, addChild, addChildB', animateB, build, call, countDefault, flare, getCenterPosB, getProp, getSizeB, make, newLabel, newRectangleShape, peek, popup', setPositionB, setProps, setText, toSceneHandle')
-import Puzzle.Game.Tiles (Tile(..), TilePos, Tiles, getTilePos)
+import Puzzle.Game.Tiles as T
 import Puzzle.View.Grids (Grids, calcTilePosition, getGridsUnit, newGrids)
+import Puzzle.View.Message as VM
 import Puzzle.View.Style (finishMotion, style)
 import Puzzle.View.TileShapes (TileShapes, moveTileShape, newTileShapes, setTileShapesPosition, sleepAllTileShapes, wakeUpTileShapes)
 import Type.Prelude (SProxy(..))
 
 
-type PuzzleView =
+type ViewState =
   { scene ∷ DisplayScene
   , grids ∷ Grids
   , timeLabel ∷ Label
@@ -40,8 +36,14 @@ instance eventEventFinish ∷ Event EventFinish {score ∷ String} where
   event _ = "finish"
 
 
-newPuzzleView ∷ DisplayScene → Effect PuzzleView
-newPuzzleView scene = do
+puzzleView ∷ DisplayScene → Effect (Machine VM.Message Unit)
+puzzleView scene = do
+  state ← initialState scene
+  machine (\i s → viewFunc i s $> Tuple unit s) state VM.Init unit
+
+
+initialState ∷ DisplayScene → Effect ViewState
+initialState scene = do
   _ ← setProps style.scene scene
 
   sceneWidth ← getProp (SProxy ∷ SProxy "width") scene
@@ -59,45 +61,67 @@ newPuzzleView scene = do
   pure {scene, grids, timeLabel, shapes}
 
 
-setTilesView ∷ Tiles → PuzzleView -> Effect Unit
-setTilesView tiles view =
-  setTileShapesPosition noToPosition view.shapes
+viewFunc ∷ VM.Message → ViewState → Effect Unit
+viewFunc VM.Init = \_ → pure unit
+viewFunc VM.Nothing = \_ → pure unit
+viewFunc (VM.InitialSet tiles mTiles) = initialSet tiles mTiles
+viewFunc (VM.UpdateTime time) = updateTime time
+viewFunc (VM.MoveTile no pos mTiles) = moveTile no pos mTiles
+viewFunc (VM.MoveTileFinish no pos time) = moveTileFinish no pos time
+
+
+initialSet ∷ T.Tiles → T.Tiles → ViewState → Effect Unit
+initialSet tiles mTiles state = do
+  setTileShapesPosition noToPosition state.shapes
+  setInteractiveView mTiles state.shapes
+  countDown state.scene
   where
-    noToPosition = calcTilePosition view.grids <<< getTilePos tiles <<< Tile
+    noToPosition = calcTilePosition state.grids <<< T.getTilePos tiles <<< T.Tile
 
 
-moveTileView ∷ Tile → TilePos → PuzzleView → Effect Unit
-moveTileView (Tile no) tilePos view =
-  let pos = calcTilePosition view.grids tilePos
-  in  moveTileShape (no - 1) pos view.shapes
-moveTileView Null _ _ = pure unit
+updateTime ∷ Duration → ViewState → Effect Unit
+updateTime time state = void $ setText (style.timeText time) state.timeLabel
 
 
-setInteractiveView ∷ Tiles → PuzzleView → Effect Unit
-setInteractiveView tiles view = do
-  sleepAllTileShapes view.shapes
-  wakeUpTileShapes (mapMaybe getShapeNo tiles) view.shapes
+moveTile ∷ Int → T.TilePos → T.Tiles → ViewState → Effect Unit
+moveTile no pos mTiles state = do
+  moveTileByNo no pos state
+  setInteractiveView mTiles state.shapes
+
+
+moveTileFinish ∷ Int → T.TilePos → Duration → ViewState → Effect Unit
+moveTileFinish no pos time state = do
+  moveTileByNo no pos state
+  finishView time state
+
+
+moveTileByNo ∷ Int → T.TilePos → ViewState → Effect Unit
+moveTileByNo no tilePos state = do
+  let pos = calcTilePosition state.grids tilePos
+  moveTileShape (no - 1) pos state.shapes
+
+
+setInteractiveView ∷ T.Tiles → TileShapes → Effect Unit
+setInteractiveView tiles shapes = do
+  sleepAllTileShapes shapes
+  wakeUpTileShapes (mapMaybe getShapeNo tiles) shapes
   where
-    getShapeNo (Tile no) = Just (no - 1)
-    getShapeNo Null = Nothing
+    getShapeNo (T.Tile no) = Just (no - 1)
+    getShapeNo T.Null = Nothing
 
 
-updateTimeView ∷ Duration → PuzzleView → Effect Unit
-updateTimeView time view = void $ setText (style.timeText time) view.timeLabel
-
-
-startView ∷ PuzzleView → Effect Unit
-startView view = void $ popup' countScene {count: countDefault} view.scene
+countDown ∷ DisplayScene → Effect Unit
+countDown scene = void $ popup' countScene {count: countDefault} scene
   where
     countScene ∷ SceneHandle CountScene (count ∷ CountSetting) ()
     countScene = toSceneHandle' \_ _ → setProps style.countScene
 
 
-finishView ∷ Duration → PuzzleView → Effect Unit
-finishView time view = do
-  sleepAllTileShapes view.shapes
+finishView ∷ Duration → ViewState → Effect Unit
+finishView time state = do
+  sleepAllTileShapes state.shapes
 
-  void $ flip build view.scene do
+  void $ flip build state.scene do
     scene ← peek
     pos ← getCenterPosB
     size ← getSizeB
@@ -108,5 +132,4 @@ finishView time view = do
       setPositionB pos
       animateB do
         finishMotion
-        call \l →
-          const l <$> flare EventFinish {score: style.timeText time} scene
+        call \l → flare EventFinish {score: style.timeText time} scene $> l

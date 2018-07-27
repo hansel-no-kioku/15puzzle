@@ -51,9 +51,9 @@ shuffleTiles num tiles =
         len = length tileMoves
       i ← randomInt 0 $ len - 1
       case tileMoves !! i of
-        Just tileMove →
+        Just tileMove → do
           let tiles'' = moveTile tiles' tileMove
-          in  pure $ Loop $ Shuffle (n - 1) tileMove.to tiles''
+          pure $ Loop $ Shuffle (n - 1) tileMove.to tiles''
         Nothing → pure $ Done tiles'
 
     getTileMoves tiles' =
